@@ -43,13 +43,37 @@ jobs:
           $incDir = Get-ChildItem -Path $sdkDir -Filter "CL" -Directory -Recurse | Where-Object { Test-Path "$($_.FullName)\cl.h" } | Select-Object -First 1
           Write-Host "OpenCL.lib found at: $($libFile.FullName)"
           Write-Host "CL headers found at: $($incDir.FullName)"
-          # Set environment variables for build
           $libDir = $libFile.DirectoryName
           $includeDir = $incDir.ParentName
           echo "OPENCL_LIB_DIR=$libDir" >> $env:GITHUB_ENV
           echo "OPENCL_INCLUDE_DIR=$includeDir" >> $env:GITHUB_ENV
-          # Also add to LIB path so link.exe can find it
+          # Add OpenCL lib to LIB path
           echo "LIB=$libDir;$env:LIB" >> $env:GITHUB_ENV
+
+      - name: Add Vulkan lib to LIB path
+        shell: pwsh
+        run: |
+          # setup-vulkan-sdk sets VULKAN_SDK env var
+          $vulkanLibDir = Join-Path $env:VULKAN_SDK "Lib"
+          Write-Host "VULKAN_SDK=$env:VULKAN_SDK"
+          Write-Host "Vulkan lib dir: $vulkanLibDir"
+          if (Test-Path $vulkanLibDir) {
+            Get-ChildItem $vulkanLibDir -Filter "*.lib"
+            echo "LIB=$vulkanLibDir;$env:LIB" >> $env:GITHUB_ENV
+          } else {
+            # Try alternative locations
+            $altDir = Join-Path $env:VULKAN_SDK "lib"
+            if (Test-Path $altDir) {
+              Get-ChildItem $altDir -Filter "*.lib"
+              echo "LIB=$altDir;$env:LIB" >> $env:GITHUB_ENV
+            } else {
+              Write-Host "WARNING: Could not find Vulkan lib directory"
+              Get-ChildItem $env:VULKAN_SDK -Recurse -Filter "vulkan.lib" | ForEach-Object {
+                Write-Host "Found vulkan.lib at: $($_.FullName)"
+                echo "LIB=$($_.DirectoryName);$env:LIB" >> $env:GITHUB_ENV
+              }
+            }
+          }
       
       - name: Cache cargo registry
         uses: actions/cache@v4
