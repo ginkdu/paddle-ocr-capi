@@ -31,14 +31,25 @@ jobs:
           vulkan-use-cache: true
 
       - name: Install OpenCL SDK
-        shell: bash
+        shell: pwsh
         run: |
-          mkdir -p "$GITHUB_WORKSPACE/opencl-sdk/include/CL"
-          mkdir -p "$GITHUB_WORKSPACE/opencl-sdk/lib"
-          # Download OpenCL headers
-          git clone --depth 1 https://github.com/KhronosGroup/OpenCL-Headers.git
-          cp -r OpenCL-Headers/CL/* "$GITHUB_WORKSPACE/opencl-sdk/include/CL/"
-          echo "OPENCL_SDK_PATH=$GITHUB_WORKSPACE/opencl-sdk" >> "$GITHUB_ENV"
+          $sdkUrl = "https://github.com/KhronosGroup/OpenCL-SDK/releases/download/v2024.10.24/OpenCL-SDK-v2024.10.24-Win-x64.zip"
+          $sdkZip = "${{ github.workspace }}\opencl-sdk.zip"
+          $sdkDir = "${{ github.workspace }}\opencl-sdk"
+          Invoke-WebRequest -Uri $sdkUrl -OutFile $sdkZip
+          Expand-Archive -Path $sdkZip -DestinationPath $sdkDir
+          # Find OpenCL.lib location
+          $libFile = Get-ChildItem -Path $sdkDir -Filter "OpenCL.lib" -Recurse | Select-Object -First 1
+          $incDir = Get-ChildItem -Path $sdkDir -Filter "CL" -Directory -Recurse | Where-Object { Test-Path "$($_.FullName)\cl.h" } | Select-Object -First 1
+          Write-Host "OpenCL.lib found at: $($libFile.FullName)"
+          Write-Host "CL headers found at: $($incDir.FullName)"
+          # Set environment variables for build
+          $libDir = $libFile.DirectoryName
+          $includeDir = $incDir.ParentName
+          echo "OPENCL_LIB_DIR=$libDir" >> $env:GITHUB_ENV
+          echo "OPENCL_INCLUDE_DIR=$includeDir" >> $env:GITHUB_ENV
+          # Also add to LIB path so link.exe can find it
+          echo "LIB=$libDir;$env:LIB" >> $env:GITHUB_ENV
       
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -60,8 +71,6 @@ jobs:
       
       - name: Build ocr_capi
         run: cargo build --release --target ${{ matrix.target }} --features opencl,vulkan
-        env:
-          OPENCL_DIR: ${{ env.OPENCL_SDK_PATH }}
       
       - name: Prepare artifacts
         shell: bash
